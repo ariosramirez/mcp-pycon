@@ -2,7 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
-[![MCP](https://img.shields.io/badge/MCP-0.9+-purple.svg)](https://modelcontextprotocol.io/)
+[![FastMCP](https://img.shields.io/badge/FastMCP-2.0+-purple.svg)](https://gofastmcp.com/)
 [![AWS](https://img.shields.io/badge/AWS-App%20Runner-orange.svg)](https://aws.amazon.com/apprunner/)
 
 A complete, demonstration of the **Model Context Protocol (MCP)** showcasing how to securely bridge Large Language Models with real-world APIs.
@@ -32,18 +32,20 @@ When integrating LLMs with internal APIs, you face three critical problems:
 ### Components
 
 - **Task API** (FastAPI): RESTful API for managing users, calls, and tasks
-- **MCP Server**: Secure bridge that exposes API as LLM tools
+- **MCP Server** (FastMCP): Secure bridge that exposes API as LLM tools using modern Python decorators
 - **Demo Client**: Interactive presentation showcasing the integration
 - **S3 Storage**: Simple, visual data persistence layer
 
 ## ✨ Features
 
+- ✅ **FastMCP Framework**: Modern, decorator-based MCP server with automatic schema generation
 - ✅ **Secure API Key Management**: Credentials never exposed to LLM
 - ✅ **Natural Language Interface**: Spanish/English commands → API calls
 - ✅ **Multi-step Orchestration**: Complex workflows handled intelligently
 - ✅ **Complete CRUD Operations**: Users, scheduled calls, and tasks
 - ✅ **Production-Ready**: FastAPI + AWS App Runner + S3
 - ✅ **Interactive Demo**: Rich CLI presentation with scenarios
+- ✅ **MCP Inspector**: Debug and test tools with the official inspector
 - ✅ **Docker Support**: Containerized deployment
 - ✅ **Comprehensive Docs**: API documentation with Swagger UI
 
@@ -52,8 +54,7 @@ When integrating LLMs with internal APIs, you face three critical problems:
 ### Prerequisites
 
 - Python 3.11+
-- AWS Account (for S3 storage)
-- Anthropic API Key (for Claude)
+- Github API Key (for AI)
 
 ### Installation
 
@@ -62,12 +63,10 @@ When integrating LLMs with internal APIs, you face three critical problems:
 git clone https://github.com/yourusername/mcp-pycon-demo
 cd mcp-pycon-demo
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies with uv (recommended) or pip
+uv sync
+# OR
+pip install -e .
 
 # Configure environment
 cp .env.example .env
@@ -112,7 +111,21 @@ In a new terminal:
 python -m mcp_server.server
 ```
 
-#### 3. Run the Interactive Demo
+#### 3. Test with MCP Inspector (Optional)
+
+Debug and test your MCP tools interactively:
+
+```bash
+npx @modelcontextprotocol/inspector fastmcp run mcp_server/server.py:mcp
+```
+
+This launches a web UI at http://localhost:5173 where you can:
+- View all available tools
+- Test tool calls with parameters
+- Inspect request/response payloads
+- Debug your MCP server implementation
+
+#### 4. Run the Interactive Demo
 
 In another terminal:
 
@@ -124,6 +137,85 @@ This will launch an interactive presentation showcasing three scenarios:
 1. Register user and schedule call
 2. Query and update operations
 3. Complex workflow orchestration
+
+## 🔍 MCP Inspector
+
+The MCP Inspector is a powerful development tool for testing and debugging MCP servers. It provides a web interface to interact with your MCP tools without needing a full client implementation.
+
+### Launch Inspector
+
+```bash
+# Make sure Task API is running first
+npx @modelcontextprotocol/inspector fastmcp run mcp_server/server.py:mcp
+```
+
+### Features
+
+- **Tool Discovery**: View all available tools with their schemas
+- **Interactive Testing**: Call tools with custom parameters
+- **Request/Response Inspection**: See exactly what's being sent and received
+- **Real-time Debugging**: Test your MCP server as you develop
+
+The inspector automatically detects changes to your server code, making it perfect for iterative development.
+
+### Example: Testing a Tool
+
+1. Open http://localhost:5173 in your browser
+2. Select a tool (e.g., "register_user")
+3. Fill in the parameters:
+   ```json
+   {
+     "name": "Test User",
+     "email": "test@example.com",
+     "company": "Test Corp"
+   }
+   ```
+4. Click "Call Tool" and inspect the response
+
+## 🚀 Why FastMCP?
+
+This project uses **FastMCP**, a modern Python framework that makes building MCP servers dramatically simpler:
+
+### Before (Traditional MCP SDK)
+```python
+@app.list_tools()
+async def list_tools() -> list[Tool]:
+    return [Tool(
+        name="register_user",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                # ... 20+ lines of JSON schema
+            }
+        }
+    )]
+
+@app.call_tool()
+async def call_tool(name: str, arguments: Any):
+    if name == "register_user":
+        # handler logic
+        return [TextContent(type="text", text="result")]
+```
+
+### After (FastMCP)
+```python
+@mcp.tool
+async def register_user(
+    name: Annotated[str, "Full name of the user"],
+    email: Annotated[str, "Email address"],
+) -> str:
+    """Register a new user."""
+    # handler logic
+    return "✅ User registered!"
+```
+
+### Benefits
+- **60% less code**: Decorators replace manual schema definitions
+- **Type-safe**: Automatic validation from Python type hints
+- **Auto-documentation**: Docstrings become tool descriptions
+- **Cleaner errors**: `ToolError` for user-friendly error messages
+- **Modern Python**: Uses `Annotated`, `Literal`, and Pydantic patterns
 
 ## 📚 API Documentation
 
@@ -369,40 +461,53 @@ mcp-pycon-demo/
 Note: Deployment files (Dockerfile, apprunner.yaml, deploy.sh) are located in the task_api/ directory.
 ```
 
-### Adding New Tools
+### Adding New Tools (FastMCP)
 
-To add a new MCP tool:
+To add a new MCP tool using FastMCP:
 
 1. Add API endpoint in [task_api/main.py](task_api/main.py)
-2. Add tool definition in [mcp_server/server.py](mcp_server/server.py) `list_tools()`
-3. Add tool handler in [mcp_server/server.py](mcp_server/server.py) `call_tool()`
+2. Add a decorated function in [mcp_server/server.py](mcp_server/server.py)
 
 Example:
 
 ```python
-# In list_tools()
-Tool(
-    name="your_new_tool",
-    description="What this tool does",
-    inputSchema={
-        "type": "object",
-        "properties": {
-            "param": {"type": "string", "description": "Parameter description"}
-        },
-        "required": ["param"]
-    }
-)
+from typing import Annotated, Literal
+from fastmcp.exceptions import ToolError
+from pydantic import Field
 
-# In call_tool()
-elif name == "your_new_tool":
-    response = await client.post("/your-endpoint", json=arguments)
-    response.raise_for_status()
-    return [TextContent(type="text", text="Result")]
+@mcp.tool
+async def your_new_tool(
+    param: Annotated[str, "Parameter description"],
+    count: Annotated[int, Field(ge=1, le=100, description="Count (1-100)")] = 10,
+    status: Annotated[Literal["active", "inactive"], "Filter status"] = "active"
+) -> str:
+    """What this tool does.
+
+    Provide a detailed description for the LLM to understand
+    when and how to use this tool.
+    """
+    client = get_http_client()
+
+    try:
+        response = await client.post("/your-endpoint", json={"param": param})
+        response.raise_for_status()
+        result = response.json()
+        return f"✅ Success: {result}"
+    except httpx.HTTPStatusError as e:
+        raise ToolError(f"Failed: {e.response.json().get('message', str(e))}")
 ```
+
+FastMCP automatically:
+- Generates JSON schemas from type hints
+- Validates parameters using Pydantic
+- Converts string returns to TextContent
+- Handles ToolError exceptions
 
 ## 📖 Resources
 
+- **FastMCP Documentation**: https://gofastmcp.com
 - **MCP Documentation**: https://modelcontextprotocol.io
+- **MCP Inspector**: https://github.com/modelcontextprotocol/inspector
 - **FastAPI Documentation**: https://fastapi.tiangolo.com
 - **AWS App Runner**: https://aws.amazon.com/apprunner/
 - **Anthropic Claude**: https://anthropic.com/claude
@@ -418,8 +523,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 🙏 Acknowledgments
 
 - Built for PyCon presentation
-- Powered by Anthropic's MCP and Claude
-- FastAPI for the excellent framework
+- Powered by FastMCP framework for elegant MCP server implementation
+- Anthropic's Model Context Protocol and Claude
+- FastAPI for the excellent web framework
 - AWS for serverless infrastructure
 
 ## 💡 Use Cases
