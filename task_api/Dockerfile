@@ -1,8 +1,7 @@
-# Multi-stage Dockerfile for the Task API
-# Place this file in the task_api/ directory
+# Multi-stage Dockerfile for the Task API using uv
 # Build from project root: docker build -f task_api/Dockerfile -t task-api .
 
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -12,28 +11,36 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements from project root
-COPY requirements.txt .
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv (frozen lockfile for reproducibility)
+RUN uv sync --frozen --no-install-project --no-dev
 
 # Final stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Copy uv from builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
 COPY task_api/ ./task_api/
 
 # Set environment variables
-ENV PATH=/root/.local/bin:$PATH \
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    VIRTUAL_ENV=/app/.venv
 
 # Expose port
 EXPOSE 8000

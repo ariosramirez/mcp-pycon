@@ -31,16 +31,18 @@ services:
     container_name: task-api-service
     ports:
       - "8000:8000"
+    env_file:
+      - ./.env
     environment:
       # API Configuration
-      - TASK_API_KEY=demo-secret-key-change-in-production
+      - TASK_API_KEY=${TASK_API_KEY:-demo-secret-key-change-in-production}
 
       # AWS Configuration (LocalStack)
-      - AWS_REGION=us-east-1
-      - AWS_S3_BUCKET=mcp-pycon-demo-bucket
-      - AWS_ENDPOINT_URL=http://localstack:4566
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET:-mcp-pycon-demo-bucket}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://localstack:4566}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
 
       # Server Configuration
       - PYTHONUNBUFFERED=1
@@ -49,12 +51,6 @@ services:
         condition: service_healthy
     networks:
       - task-api-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
 networks:
   task-api-network:
