@@ -268,3 +268,4 @@ __marimo__/
 # ignore all .md files exept README.md
 *.md
 !README.md
+!CLAUDE.md
