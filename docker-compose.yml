@@ -1,0 +1,130 @@
+# Main Docker Compose for MCP PyCon Demo
+# Orchestrates all services: LocalStack, Task API, and Demo Client
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose down           # Stop all services
+#   docker compose logs -f        # View logs
+#   docker compose ps             # Check status
+
+services:
+  # LocalStack - AWS services emulator (S3)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: mcp-demo-localstack
+    ports:
+      - "4566:4566"  # LocalStack gateway
+      - "4571:4571"  # LocalStack dashboard (optional)
+    env_file:
+      - ./.env
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - PERSISTENCE=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "localstack_data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - mcp-demo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Task API - FastAPI service with S3 storage
+  task-api:
+    build:
+      context: .
+      dockerfile: task_api/Dockerfile
+    container_name: mcp-demo-task-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    environment:
+      # API Configuration
+      - TASK_API_KEY=demo-secret-key-change-in-production
+
+      # AWS Configuration (LocalStack)
+      - AWS_REGION=us-east-1
+      - AWS_S3_BUCKET=mcp-pycon-demo-bucket
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+
+      # Server Configuration
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - mcp-demo-network
+    # Healthcheck is defined in Dockerfile using Python (no curl needed)
+
+  # MCP Server - Secure bridge between LLM and Task API
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    container_name: mcp-demo-mcp-server
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./.env
+    environment:
+      # Task API Configuration
+      - TASK_API_URL=http://task-api:8000
+      - TASK_API_KEY=demo-secret-key-change-in-production
+
+      # MCP Server Configuration
+      - MCP_TRANSPORT=sse
+      - MCP_HTTP_HOST=0.0.0.0
+      - MCP_HTTP_PORT=8001
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      task-api:
+        condition: service_healthy
+    networks:
+      - mcp-demo-network
+    # Healthcheck is defined in Dockerfile using curl
+
+  # Streamlit Demo Client - Interactive web presentation
+  demo-client:
+    build:
+      context: .
+      dockerfile: demo_client/Dockerfile
+    container_name: mcp-demo-streamlit
+    ports:
+      - "8501:8501"
+    env_file:
+      - ./.env
+    environment:
+      # GitHub Models API Key (for LLM)
+      - GITHUB_API_KEY=${GITHUB_API_KEY:-}
+
+      # MCP Server Configuration
+      - MCP_SERVER_URL=http://mcp-server:8001
+
+      # Task API Configuration (for reference)
+      - TASK_API_URL=http://task-api:8000
+
+      # Streamlit Configuration
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      mcp-server:
+        condition: service_started
+    networks:
+      - mcp-demo-network
+    # Healthcheck is defined in Dockerfile using curl (installed in image)
+
+networks:
+  mcp-demo-network:
+    driver: bridge
+    name: mcp-demo-network
+
+volumes:
+  localstack_data:
+    name: mcp-demo-localstack-data
