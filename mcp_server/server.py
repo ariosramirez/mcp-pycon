@@ -12,6 +12,8 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +43,16 @@ def get_http_client() -> httpx.AsyncClient:
             timeout=30.0
         )
     return http_client
+
+
+# ============================================================================
+# CUSTOM ROUTES
+# ============================================================================
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> PlainTextResponse:
+    """Health check endpoint for monitoring and Docker health checks."""
+    return PlainTextResponse("OK", status_code=200)
 
 
 # ============================================================================
@@ -219,9 +231,9 @@ async def schedule_call(
 async def list_calls(
     user_id: Annotated[str, "Optional: Filter calls by user ID"] = "",
     status: Annotated[
-        Literal["scheduled", "completed", "cancelled", "rescheduled", ""],
+        Literal["scheduled", "completed", "cancelled", "rescheduled"] | None,
         "Optional: Filter calls by status"
-    ] = "",
+    ] = None,
 ) -> str:
     """List scheduled calls, optionally filtered by user or status.
 
@@ -233,7 +245,7 @@ async def list_calls(
         params = {}
         if user_id:
             params["user_id"] = user_id
-        if status:
+        if status is not None:
             params["status_filter"] = status
 
         response = await client.get("/calls", params=params)
@@ -350,9 +362,9 @@ async def create_task(
 async def list_tasks(
     user_id: Annotated[str, "Optional: Filter tasks by user ID"] = "",
     status: Annotated[
-        Literal["todo", "in_progress", "done", "cancelled", ""],
+        Literal["todo", "in_progress", "done", "cancelled"] | None,
         "Optional: Filter tasks by status"
-    ] = "",
+    ] = None,
 ) -> str:
     """List all tasks, optionally filtered by user or status.
 
@@ -364,7 +376,7 @@ async def list_tasks(
         params = {}
         if user_id:
             params["user_id"] = user_id
-        if status:
+        if status is not None:
             params["status_filter"] = status
 
         response = await client.get("/tasks", params=params)
@@ -431,6 +443,25 @@ async def update_task_status(
 # ============================================================================
 
 if __name__ == "__main__":
+    import sys
+
+    # Determine transport mode from command line or environment
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--http":
+        transport = "sse"
+
     logger.info("Starting Task API MCP Server (FastMCP)")
+    logger.info(f"Transport mode: {transport}")
     logger.info(f"Connecting to API at: {API_URL}")
-    mcp.run()
+
+    if transport == "sse":
+        # Run as HTTP/SSE server for Docker network communication
+        host = os.getenv("MCP_HTTP_HOST", "0.0.0.0")
+        port = int(os.getenv("MCP_HTTP_PORT", "8001"))
+
+        logger.info(f"Starting HTTP server on {host}:{port}")
+        mcp.run(transport="sse", host=host, port=port)
+    else:
+        # Run as stdio server (default for MCP Inspector)
+        mcp.run()
