@@ -32,10 +32,16 @@ from typing import List, Optional
 # Import LangGraph agent for LLM integration
 try:
     from demo_client.langgraph_agent import LangGraphAgent
+    from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
     LLM_AVAILABLE = True
 except ImportError as e:
     LLM_AVAILABLE = False
     print(f"LangGraph agent import error: {e}")
+    # Fallback imports if langchain not available
+    try:
+        from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+    except ImportError:
+        pass
 
 # Page configuration
 st.set_page_config(
@@ -93,6 +99,8 @@ if 'scenarios_completed' not in st.session_state:
     st.session_state.scenarios_completed = []
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Home"
+if 'conversation_history' not in st.session_state:
+    st.session_state.conversation_history = []  # Store serialized messages
 
 
 @st.cache_resource
@@ -122,6 +130,93 @@ def get_langgraph_agent() -> Optional[LangGraphAgent]:
         import traceback
         traceback.print_exc()
         return None
+
+
+def serialize_message(msg: BaseMessage) -> dict:
+    """Serialize a LangChain message to a dictionary for storage in session_state.
+    
+    Args:
+        msg: LangChain message to serialize
+        
+    Returns:
+        Dictionary representation of the message
+    """
+    msg_dict = {
+        "type": msg.__class__.__name__,
+        "content": msg.content if hasattr(msg, "content") else str(msg),
+    }
+    
+    # Add tool_calls if present (for AIMessage)
+    if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+        msg_dict["tool_calls"] = [
+            {
+                "id": tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", ""),
+                "name": tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", ""),
+                "args": tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {}),
+            }
+            for tc in msg.tool_calls
+        ]
+    
+    # Add tool_call_id for ToolMessage
+    if isinstance(msg, ToolMessage) and hasattr(msg, "tool_call_id"):
+        msg_dict["tool_call_id"] = msg.tool_call_id
+    
+    return msg_dict
+
+
+def deserialize_message(msg_dict: dict) -> BaseMessage:
+    """Deserialize a dictionary back to a LangChain message.
+    
+    Args:
+        msg_dict: Dictionary representation of the message
+        
+    Returns:
+        LangChain message object
+    """
+    msg_type = msg_dict.get("type", "HumanMessage")
+    content = msg_dict.get("content", "")
+    
+    if msg_type == "SystemMessage":
+        return SystemMessage(content=content)
+    elif msg_type == "HumanMessage":
+        return HumanMessage(content=content)
+    elif msg_type == "AIMessage":
+        msg = AIMessage(content=content)
+        # Restore tool_calls if present
+        if "tool_calls" in msg_dict:
+            msg.tool_calls = msg_dict["tool_calls"]
+        return msg
+    elif msg_type == "ToolMessage":
+        tool_call_id = msg_dict.get("tool_call_id", "")
+        return ToolMessage(content=content, tool_call_id=tool_call_id)
+    else:
+        # Fallback to HumanMessage
+        return HumanMessage(content=content)
+
+
+def get_conversation_history() -> List[BaseMessage]:
+    """Get the conversation history from session_state as LangChain messages.
+    
+    Returns:
+        List of LangChain messages
+    """
+    if not st.session_state.conversation_history:
+        return []
+    return [deserialize_message(msg_dict) for msg_dict in st.session_state.conversation_history]
+
+
+def save_conversation_history(messages: List[BaseMessage]) -> None:
+    """Save conversation history to session_state.
+    
+    Args:
+        messages: List of LangChain messages to save
+    """
+    st.session_state.conversation_history = [serialize_message(msg) for msg in messages]
+
+
+def clear_conversation_history() -> None:
+    """Clear the conversation history."""
+    st.session_state.conversation_history = []
 
 
 def mark_scenario_complete(scenario_num):
@@ -320,7 +415,7 @@ def show_architecture():
         st.rerun()
 
 
-async def process_with_llm(user_message: str, scenario_context: str = ""):
+async def process_with_llm(user_message: str, scenario_context: str = "", maintain_context: bool = True):
     """Process user message with LangGraph agent and stream execution events.
 
     This function connects to the LangGraph agent, which uses an LLM (via GitHub Models)
@@ -330,6 +425,7 @@ async def process_with_llm(user_message: str, scenario_context: str = ""):
     Args:
         user_message: The user's natural language request (e.g., in Spanish)
         scenario_context: Additional context to guide the LLM's behavior for this scenario
+        maintain_context: If True, maintains conversation history across multiple executions
 
     Yields:
         Event dictionaries with structure:
@@ -360,10 +456,24 @@ When the user makes a request:
 
 Be concise and clear in your explanations."""
 
+    # Get previous conversation history if maintaining context
+    previous_messages = None
+    if maintain_context:
+        previous_messages = get_conversation_history()
+
     try:
         # Stream events from agent
-        async for event in agent.astream_response(user_message, system_prompt):
+        final_messages = None
+        async for event in agent.astream_response(user_message, system_prompt, previous_messages):
+            # Capture conversation state for history persistence
+            if event.get("type") == "conversation_state":
+                final_messages = event.get("data")
             yield event
+        
+        # Save conversation history after completion
+        if maintain_context and final_messages:
+            save_conversation_history(final_messages)
+            
     except Exception as e:
         yield {"type": "error", "data": f"❌ Error: {str(e)}"}
 
@@ -447,6 +557,10 @@ def display_llm_events(events: List[dict]) -> None:
             # LLM's final response after processing tool results
             st.success(f"💬 **Final Response (Natural Language):**\n\n{event_data}")
 
+        elif event_type == "conversation_state":
+            # Conversation state saved (handled internally, no UI display needed)
+            pass
+
         elif event_type == "complete":
             # Execution finished
             st.markdown(f"_{event_data}_")
@@ -524,6 +638,21 @@ def show_scenario_1():
     - Multi-step orchestration (register then schedule)
     - Real-world business use case
     """)
+
+    st.markdown("---")
+
+    # Conversation history section
+    history_count = len(st.session_state.conversation_history)
+    if history_count > 0:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info(f"📚 **Conversation Context Active**: {history_count} previous messages will be included for context continuity.")
+        with col2:
+            if st.button("🗑️ Clear History", key="clear_history_1", help="Clear conversation history to start fresh"):
+                clear_conversation_history()
+                st.rerun()
+    else:
+        st.info("💡 **Tip**: After running this scenario, the conversation history will be maintained. Run it again with a different message to see context continuity!")
 
     st.markdown("---")
 
@@ -624,6 +753,21 @@ def show_scenario_2():
     - State updates based on query results
     - Handling multiple records
     """)
+
+    st.markdown("---")
+
+    # Conversation history section
+    history_count = len(st.session_state.conversation_history)
+    if history_count > 0:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info(f"📚 **Conversation Context Active**: {history_count} previous messages will be included for context continuity.")
+        with col2:
+            if st.button("🗑️ Clear History", key="clear_history_2", help="Clear conversation history to start fresh"):
+                clear_conversation_history()
+                st.rerun()
+    else:
+        st.info("💡 **Tip**: After running this scenario, the conversation history will be maintained. Run it again with a different message to see context continuity!")
 
     st.markdown("---")
 
@@ -733,6 +877,21 @@ def show_scenario_3():
     - Intelligent data processing (deduplication)
     - Complex business logic execution
     """)
+
+    st.markdown("---")
+
+    # Conversation history section
+    history_count = len(st.session_state.conversation_history)
+    if history_count > 0:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info(f"📚 **Conversation Context Active**: {history_count} previous messages will be included for context continuity.")
+        with col2:
+            if st.button("🗑️ Clear History", key="clear_history_3", help="Clear conversation history to start fresh"):
+                clear_conversation_history()
+                st.rerun()
+    else:
+        st.info("💡 **Tip**: After running this scenario, the conversation history will be maintained. Run it again with a different message to see context continuity!")
 
     st.markdown("---")
 

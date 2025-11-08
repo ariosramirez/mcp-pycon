@@ -244,7 +244,7 @@ class LangGraphAgent:
     # ------------------------------------------------------------------------
 
     async def astream_response(
-        self, user_message: str, system_prompt: str
+        self, user_message: str, system_prompt: str, previous_messages: Optional[List[BaseMessage]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream agent execution events for real-time UI updates.
 
@@ -258,6 +258,7 @@ class LangGraphAgent:
         Args:
             user_message: User's request
             system_prompt: System prompt with context
+            previous_messages: Optional list of previous messages to maintain conversation context
 
         Yields:
             Event dictionaries with type and data
@@ -291,11 +292,24 @@ class LangGraphAgent:
 
                     yield {"type": "info", "data": f"🔗 Connected to MCP ({len(mcp_tools_formatted)} tools)"}
 
-                    # Initial state
-                    initial_messages = [
-                        SystemMessage(content=system_prompt),
-                        HumanMessage(content=user_message),
-                    ]
+                    # Build initial messages - include previous context if available
+                    initial_messages = []
+                    
+                    # Add previous messages if provided (maintains conversation context)
+                    if previous_messages:
+                        # Filter out old system messages to avoid duplicates
+                        filtered_previous = [msg for msg in previous_messages if not isinstance(msg, SystemMessage)]
+                        initial_messages.extend(filtered_previous)
+                        yield {"type": "info", "data": f"📚 Using conversation history ({len(filtered_previous)} previous messages)"}
+                    
+                    # Add system prompt (only if not already in history)
+                    # Check if we already have a system message in previous messages
+                    has_system = previous_messages and any(isinstance(msg, SystemMessage) for msg in previous_messages)
+                    if not has_system:
+                        initial_messages.append(SystemMessage(content=system_prompt))
+                    
+                    # Add new user message
+                    initial_messages.append(HumanMessage(content=user_message))
 
                     initial_state = {
                         "messages": initial_messages,
@@ -303,7 +317,10 @@ class LangGraphAgent:
                         "mcp_tools_formatted": mcp_tools_formatted,
                     }
 
-                    # Stream events from graph execution
+                    # Stream events from graph execution and capture final state
+                    # We'll collect messages as we go to build the final state
+                    collected_messages = list(initial_messages)
+                    
                     async for event in self.app.astream_events(initial_state, version="v2"):
                         event_kind = event.get("event")
                         event_data = event.get("data", {})
@@ -322,6 +339,10 @@ class LangGraphAgent:
                         elif event_kind == "on_chat_model_end":
                             # LLM finished - check if it wants to call tools
                             output = event_data.get("output", {})
+                            # Collect the assistant message
+                            if hasattr(output, "tool_calls") or hasattr(output, "content"):
+                                collected_messages.append(output)
+                            
                             if hasattr(output, "tool_calls") and output.tool_calls:
                                 for tool_call in output.tool_calls:
                                     # LangChain format: {"id": str, "name": str, "args": dict or str}
@@ -347,9 +368,17 @@ class LangGraphAgent:
                             output = event_data.get("output", {})
                             if isinstance(output, dict) and "messages" in output:
                                 messages = output["messages"]
+                                # Collect tool messages
+                                collected_messages.extend(messages)
                                 for msg in messages:
                                     if hasattr(msg, "content"):
                                         yield {"type": "tool_response", "data": msg.content}
+                    
+                    # Yield final conversation state for history persistence
+                    yield {
+                        "type": "conversation_state",
+                        "data": collected_messages
+                    }
 
                     yield {"type": "complete", "data": "✨ Request completed"}
 
