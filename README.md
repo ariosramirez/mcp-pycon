@@ -372,11 +372,23 @@ This architecture is ideal for:
 - **LangGraph**: https://langchain-ai.github.io/langgraph/
 - **GitHub Models**: https://github.com/marketplace/models
 
+## 🎯 Challenge for Attendees
+
+Want to extend the demo? Try the **PyCon Challenge**:
+
+**[CHALLENGE.md](CHALLENGE.md)** - Step-by-step guide to add:
+- 📊 Client Summary Tool (data aggregation)
+- 📝 User Info Prompt (template generation)
+- Complete with code, testing instructions, and troubleshooting
+
+**Time:** 30-40 minutes | **Difficulty:** Intermediate
+
 ## 📁 Documentation
 
 - [Task API README](task_api/README.md) - API endpoints, testing, Docker setup
 - [MCP Server README](mcp_server/README.md) - MCP tools, FastMCP patterns, Inspector usage
 - [CLAUDE.md](CLAUDE.md) - Development guidelines for Claude Code
+- [CHALLENGE.md](CHALLENGE.md) - Hands-on challenge for workshop attendees
 
 ## 🤝 Contributing
 

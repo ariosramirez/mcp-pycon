@@ -1,8 +1,24 @@
 """Streamlit demo app for PyCon presentation.
 
-This app demonstrates how an LLM can interact with the Task API
-through the MCP server, showing the complete flow from natural language
-to API calls in an interactive web interface.
+This interactive web application demonstrates the Model Context Protocol (MCP) in action,
+showing how Large Language Models can securely interact with real-world APIs through
+an MCP server bridge.
+
+Key Features:
+    - Three interactive scenarios demonstrating MCP capabilities
+    - Real-time LLM processing with LangGraph agent
+    - Visual representation of tool calls and responses
+    - Secure API key management (never exposed to LLM)
+    - Natural language input in Spanish → Structured API calls
+
+Architecture Flow:
+    User Input (Spanish) → LLM (Reasoning) → MCP Server (Secure Bridge) → Task API → S3
+
+The app uses:
+    - LangGraph for agentic LLM workflows
+    - Azure AI Inference (GitHub Models) for LLM access
+    - MCP protocol for secure tool calling
+    - Streamlit for interactive UI
 """
 
 import streamlit as st
@@ -305,14 +321,25 @@ def show_architecture():
 
 
 async def process_with_llm(user_message: str, scenario_context: str = ""):
-    """Process user message with LangGraph agent and stream events.
+    """Process user message with LangGraph agent and stream execution events.
+
+    This function connects to the LangGraph agent, which uses an LLM (via GitHub Models)
+    to interpret natural language and make tool calls to the MCP server. Events are
+    streamed in real-time to show the agent's reasoning process.
 
     Args:
-        user_message: The user's request
-        scenario_context: Additional context about the scenario
+        user_message: The user's natural language request (e.g., in Spanish)
+        scenario_context: Additional context to guide the LLM's behavior for this scenario
 
     Yields:
-        Event dictionaries from the agent execution
+        Event dictionaries with structure:
+            - type: Event type (info, llm_start, tool_call, tool_response, final_answer, etc.)
+            - data: Event-specific data (string, dict, etc.)
+
+    Example:
+        async for event in process_with_llm("Registra un nuevo cliente", "Register users"):
+            if event["type"] == "tool_call":
+                print(f"Tool: {event['data']['name']}")
     """
     agent = get_langgraph_agent()
 
@@ -342,77 +369,115 @@ Be concise and clear in your explanations."""
 
 
 def display_llm_events(events: List[dict]) -> None:
-    """Display LLM processing events from LangGraph agent.
+    """Display LLM processing events from LangGraph agent in real-time.
+
+    This function visualizes the agent's execution flow, showing:
+    - When the LLM starts reasoning
+    - Which tools the LLM decides to call
+    - The arguments passed to each tool
+    - The responses from the MCP server
+    - The final natural language response
 
     Args:
-        events: List of event dictionaries with 'type' and 'data' keys
+        events: List of event dictionaries from agent.astream_events() with structure:
+            - type: Event type (error, info, llm_start, tool_call, tool_response, final_answer, complete)
+            - data: Event-specific payload (varies by type)
+
+    Event Types:
+        - error: Error message (displayed as st.error)
+        - info: Informational message (e.g., "Connected to MCP")
+        - llm_start: LLM begins processing
+        - llm_stream: Streaming LLM response chunks
+        - tool_call: LLM wants to call a tool (shows tool name + arguments)
+        - tool_response: Result from tool execution via MCP server
+        - final_answer: LLM's final response in natural language
+        - complete: Execution finished
     """
     if not events:
         return
 
-    st.markdown("### 🤖 LLM Execution")
+    st.markdown("### 🤖 LLM Execution Flow")
 
-    # Process events and display
+    # Process events and display in chronological order
     for event in events:
         event_type = event.get("type")
         event_data = event.get("data")
 
         if event_type == "error":
+            # Show errors prominently
             st.error(event_data)
 
         elif event_type == "info":
+            # System information (e.g., "Connected to MCP with 9 tools")
             st.info(event_data)
 
         elif event_type == "llm_start":
+            # LLM begins reasoning
             st.info(event_data)
 
         elif event_type == "llm_stream":
-            # Could accumulate these for streaming effect
+            # Streaming LLM response chunks (could be accumulated for real-time effect)
             st.markdown(event_data)
 
         elif event_type == "tool_call":
-            # Show tool being called
+            # LLM decided to call a tool - show which one and with what arguments
             tool_name = event_data.get("name")
             tool_args = event_data.get("arguments")
             with st.expander(f"⚙️ Tool Call: `{tool_name}`", expanded=True):
+                st.markdown(f"**The LLM is calling `{tool_name}` with these arguments:**")
                 st.code(json.dumps(tool_args, indent=2), language="json")
 
         elif event_type == "tool_start":
+            # Tool execution starting
             st.markdown(f"**{event_data}**")
 
         elif event_type == "tool_response":
-            # Display tool response in an expander
+            # Tool execution completed - show the result from MCP server
             with st.expander(f"⚙️ Tool Response", expanded=True):
+                st.markdown("**Result from MCP Server:**")
                 st.markdown(event_data)
 
         elif event_type == "tool_end":
-            # Fallback for older format
+            # Fallback for older event format
             result_text = event_data.replace("✅ Tool result: ", "")
             with st.expander(f"⚙️ Tool Response", expanded=True):
                 st.markdown(result_text)
 
         elif event_type == "final_answer":
-            st.success(f"💬 **Final Response:**\n\n{event_data}")
+            # LLM's final response after processing tool results
+            st.success(f"💬 **Final Response (Natural Language):**\n\n{event_data}")
 
         elif event_type == "complete":
+            # Execution finished
             st.markdown(f"_{event_data}_")
 
 
 def check_llm_availability() -> bool:
-    """Check if LLM is available and show error if not.
+    """Check if LLM integration is properly configured and show helpful errors if not.
+
+    This function verifies:
+    1. LangGraph agent module is importable
+    2. GitHub API key (for Azure AI Inference) is set
+    3. Agent can be initialized
 
     Returns:
-        True if LLM is available, False otherwise
+        True if LLM is available and ready, False otherwise (with error message shown to user)
     """
     if not LLM_AVAILABLE:
         st.error("""
         ⚠️ **LLM Integration Not Available**
 
-        The LLM connection is not configured. To enable real LLM processing:
+        The LangGraph agent module could not be imported. This means the LLM
+        won't be able to process your requests.
 
-        1. Set `GITHUB_API_KEY` environment variable
-        2. Ensure MCP server is running
-        3. Restart the Streamlit app
+        **To fix this**:
+        1. ✅ Install dependencies: `pip install langgraph langchain-core`
+        2. ✅ Verify imports work: `python -c "from demo_client.langgraph_agent import LangGraphAgent"`
+        3. ✅ Set `GITHUB_API_KEY` environment variable
+        4. ✅ Ensure MCP server is running at http://localhost:8001
+        5. ✅ Restart the Streamlit app
+
+        **For Docker users**: Make sure the `demo-client` service is properly configured.
         """)
         return False
 
@@ -421,9 +486,24 @@ def check_llm_availability() -> bool:
         st.error("""
         ⚠️ **GitHub API Key Not Configured**
 
-        Please set the `GITHUB_API_KEY` environment variable to use LLM features.
+        The demo needs access to GitHub Models (Azure AI Inference) for LLM capabilities.
 
-        Get your token at: https://github.com/settings/tokens
+        **To get started**:
+        1. 🔑 Get a free token at: https://github.com/settings/tokens
+        2. 📝 Set the environment variable:
+           ```bash
+           export GITHUB_API_KEY=your-github-token-here
+           ```
+        3. 🔄 Restart the Streamlit app: `streamlit run demo_client/streamlit_app.py`
+
+        **For Docker users**:
+        ```bash
+        export GITHUB_API_KEY=your-token
+        docker compose up -d --build
+        ```
+
+        **Note**: The LLM integration uses GitHub Models, which provides free access to
+        various models including GPT-4o. No additional setup required beyond the token!
         """)
         return False
 
@@ -448,23 +528,50 @@ def show_scenario_1():
     st.markdown("---")
 
     # User input
-    st.markdown("### 🎤 User Request:")
+    st.markdown("### 🎤 User Request (Editable)")
 
     # Default message
     default_message = """Por favor, registra a nuestro nuevo cliente 'Azollon International' con el contacto María García (maria@test-azollon.com) y agéndale una llamada de onboarding para este viernes a las 10am."""
 
+    # Help text with examples
+    with st.expander("💡 What happens + Examples to try", expanded=False):
+        st.markdown("""
+        **The LLM will automatically**:
+        1. 🔍 Parse the natural language request (Spanish)
+        2. 🛠️ Call `register_user` tool with extracted data (name, email, company)
+        3. 🛠️ Call `schedule_call` tool using the new user ID
+        4. ✅ Return confirmation in natural language
+
+        **Try these variations**:
+
+        📝 **Different timing**:
+        - "...agéndale una llamada para mañana a las 2pm"
+        - "...programa una reunión para la próxima semana"
+
+        📝 **Different client type**:
+        - "...registra un prospecto llamado Juan Pérez..."
+        - "...añade un partner llamado Tech Solutions..."
+
+        📝 **With additional notes**:
+        - "...y agrega una nota: cliente VIP con descuento especial"
+        - "...incluye una nota: requiere atención prioritaria"
+
+        📝 **Different languages**:
+        - "Please register a new client named John Doe..."
+        """)
+
     # Editable text area
     user_message = st.text_area(
-        "Edit the user request (simulate different prompts to the LLM):",
+        "✏️ Edit the request below (the LLM will process whatever you write):",
         value=default_message,
-        height=100,
+        height=120,
         key="user_msg_scenario_1",
-        help="Modify this message to test how the LLM would handle different requests"
+        help="Modify this message to test different scenarios. The LLM will interpret your request and call the appropriate tools."
     )
 
     st.markdown(f"""
     <div class="user-quote">
-    "{user_message}"
+    📢 User says: "{user_message}"
     </div>
     """, unsafe_allow_html=True)
 
@@ -521,23 +628,53 @@ def show_scenario_2():
     st.markdown("---")
 
     # User input
-    st.markdown("### 🎤 User Request:")
+    st.markdown("### 🎤 User Request (Editable)")
 
     # Default message
     default_message = """Muéstrame todas las llamadas pendientes y marca la primera como completada."""
 
+    # Help text with examples
+    with st.expander("💡 What happens + Examples to try", expanded=False):
+        st.markdown("""
+        **The LLM will automatically**:
+        1. 🔍 Call `list_calls` tool with optional filters (status, user_id)
+        2. 🧠 Process the results and identify relevant calls
+        3. 🛠️ Call `update_call_status` tool to change status
+        4. ✅ Return summary of actions taken
+
+        **Available filters**:
+        - Status: `scheduled`, `completed`, `cancelled`, `rescheduled`
+        - User ID: Filter by specific client
+
+        **Try these variations**:
+
+        📝 **Different queries**:
+        - "Muéstrame todas las llamadas completadas esta semana"
+        - "Lista todas las llamadas del cliente con ID abc-123"
+        - "¿Cuántas llamadas tengo programadas para mañana?"
+
+        📝 **Different updates**:
+        - "Marca todas las llamadas de hoy como completadas"
+        - "Cancela la llamada con ID call-456"
+        - "Cambia el estado de la última llamada a rescheduled"
+
+        📝 **Query + Update**:
+        - "Busca llamadas pendientes de María y márcalas como completadas"
+        - "Show me all scheduled calls and cancel the oldest one"
+        """)
+
     # Editable text area
     user_message = st.text_area(
-        "Edit the user request (simulate different prompts to the LLM):",
+        "✏️ Edit the request below (test different queries and updates):",
         value=default_message,
-        height=100,
+        height=120,
         key="user_msg_scenario_2",
-        help="Modify this message to test how the LLM would handle different queries"
+        help="The LLM will query the data, process results, and perform updates as requested."
     )
 
     st.markdown(f"""
     <div class="user-quote">
-    "{user_message}"
+    📢 User says: "{user_message}"
     </div>
     """, unsafe_allow_html=True)
 
@@ -600,23 +737,55 @@ def show_scenario_3():
     st.markdown("---")
 
     # User input
-    st.markdown("### 🎤 User Request:")
+    st.markdown("### 🎤 User Request (Editable)")
 
     # Default message
     default_message = """Crea una tarea de seguimiento para todos los clientes que tienen llamadas programadas esta semana."""
 
+    # Help text with examples
+    with st.expander("💡 What happens + Examples to try", expanded=False):
+        st.markdown("""
+        **The LLM will automatically orchestrate**:
+        1. 🔍 Call `list_calls` tool to get calls matching criteria (this week)
+        2. 🧠 Extract unique user IDs from the results
+        3. 🛠️ Call `create_task` tool for each unique user
+        4. 🎯 Avoid duplicates (intelligent deduplication)
+        5. ✅ Return summary of all tasks created
+
+        **This demonstrates**:
+        - Multi-step workflow planning
+        - Cross-entity operations (calls → users → tasks)
+        - Data aggregation and processing
+        - Complex business logic execution
+
+        **Try these complex workflows**:
+
+        📝 **Different criteria**:
+        - "Crea tareas de preparación para todas las llamadas de mañana"
+        - "Para cada cliente con llamadas canceladas, crea una tarea de seguimiento"
+        - "Create follow-up tasks for all clients with completed calls this month"
+
+        📝 **With conditions**:
+        - "Si un cliente tiene más de 2 llamadas programadas, crea una tarea de revisión"
+        - "Crea tareas prioritarias para clientes VIP con llamadas esta semana"
+
+        📝 **Multi-action workflows**:
+        - "Lista usuarios sin llamadas y créales una tarea de contacto inicial"
+        - "Para cada llamada pendiente, crea una tarea y envía una nota al cliente"
+        """)
+
     # Editable text area
     user_message = st.text_area(
-        "Edit the user request (simulate different prompts to the LLM):",
+        "✏️ Edit the request below (test complex multi-step workflows):",
         value=default_message,
-        height=100,
+        height=120,
         key="user_msg_scenario_3",
-        help="Modify this message to test how the LLM would orchestrate different workflows"
+        help="The LLM will plan and execute complex workflows involving multiple tools and data processing."
     )
 
     st.markdown(f"""
     <div class="user-quote">
-    "{user_message}"
+    📢 User says: "{user_message}"
     </div>
     """, unsafe_allow_html=True)
 
