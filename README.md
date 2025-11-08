@@ -55,6 +55,7 @@ When integrating LLMs with internal APIs, you face three critical problems:
 - Python 3.12+
 - Docker & Docker Compose (for containerized setup)
 - GitHub API Key (for LLM features)
+- [More details](https://docs.google.com/document/d/1OwkOYV8CIKLso3VAw8lLu3D1z2Ke3nhi5X6zrANw1BQ/edit?usp=sharing)
 
 ### Option 1: Docker Compose (Recommended)
 
