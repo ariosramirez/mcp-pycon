@@ -1,0 +1,122 @@
+{
+  "name": "MCP PyCon Demo",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "demo-client",
+  "workspaceFolder": "/workspace",
+
+  // Features to install in the Codespace
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "dockerDashComposeVersion": "v2"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    }
+  },
+
+  // Forward ports for all services
+  "forwardPorts": [
+    8501,  // Streamlit Demo Client
+    8000,  // Task API
+    8001,  // MCP Server
+    4566   // LocalStack
+  ],
+
+  // Port attributes
+  "portsAttributes": {
+    "8501": {
+      "label": "Streamlit Demo",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "Task API",
+      "onAutoForward": "notify"
+    },
+    "8001": {
+      "label": "MCP Server",
+      "onAutoForward": "silent"
+    },
+    "4566": {
+      "label": "LocalStack",
+      "onAutoForward": "silent"
+    }
+  },
+
+  // Environment variables
+  "containerEnv": {
+    "PYTHONUNBUFFERED": "1",
+    "AWS_REGION": "us-east-1",
+    "AWS_S3_BUCKET": "mcp-pycon-demo-bucket",
+    "AWS_ENDPOINT_URL": "http://localstack:4566",
+    "AWS_ACCESS_KEY_ID": "test",
+    "AWS_SECRET_ACCESS_KEY": "test",
+    "TASK_API_KEY": "demo-secret-key-change-in-production",
+    "TASK_API_URL": "http://task-api:8000",
+    "MCP_SERVER_URL": "http://mcp-server:8001"
+  },
+
+  // VS Code customizations
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "eamodio.gitlens",
+        "GitHub.copilot",
+        "tamasfe.even-better-toml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.ruffEnabled": true,
+        "python.formatting.provider": "black",
+        "python.formatting.blackArgs": ["--line-length", "100"],
+        "[python]": {
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          },
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        },
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/*.pyc": true,
+          "**/.pytest_cache": true,
+          "**/.mypy_cache": true,
+          "**/.ruff_cache": true
+        }
+      }
+    }
+  },
+
+  // Lifecycle scripts
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "bash .devcontainer/post-start.sh",
+
+  // Run services in background
+  "runServices": ["localstack", "task-api", "mcp-server", "demo-client"],
+
+  // Mount workspace
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+  ],
+
+  // Container user
+  "remoteUser": "root",
+
+  // Update remote user UID/GID to match local user
+  "updateRemoteUserUID": true
+}

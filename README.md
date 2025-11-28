@@ -60,8 +60,8 @@ When integrating LLMs with internal APIs, you face three critical problems:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/mcp-pycon-demo
-cd mcp-pycon-demo
+git clone https://github.com/ariosramirez/mcp-pycon.git
+cd mcp-pycon
 
 # Set GitHub API key for LLM features
 export GITHUB_API_KEY=your-github-token-here
