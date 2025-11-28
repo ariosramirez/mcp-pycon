@@ -4,18 +4,7 @@
 
   // Features to install in the Codespace
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
-      "version": "latest",
-      "dockerDashComposeVersion": "v2"
-    },
-    "ghcr.io/devcontainers/features/aws-cli:1": {
-      "version": "latest"
-    },
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": true,
-      "installOhMyZsh": true,
-      "upgradePackages": true
-    }
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
   },
 
   // Forward ports for all services
