@@ -16,7 +16,8 @@ services:
       - "4566:4566"  # LocalStack gateway
       - "4571:4571"  # LocalStack dashboard (optional)
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     environment:
       - SERVICES=s3
       - DEBUG=1
@@ -43,7 +44,8 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     environment:
       # API Configuration
       - TASK_API_KEY=demo-secret-key-change-in-production
@@ -73,7 +75,8 @@ services:
     ports:
       - "8001:8001"
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     environment:
       # Task API Configuration
       - TASK_API_URL=http://task-api:8000
@@ -100,7 +103,8 @@ services:
     ports:
       - "8501:8501"
     env_file:
-      - ./.env
+      - path: ./.env
+        required: false
     environment:
       # GitHub Models API Key (for LLM)
       - GITHUB_API_KEY=${GITHUB_API_KEY:-}
