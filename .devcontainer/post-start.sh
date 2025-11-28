@@ -6,8 +6,8 @@ set -e
 
 echo "🔄 Running post-start setup..."
 
-# Navigate to workspace
-cd /workspace
+# Navigate to workspace (Codespaces default is /workspaces/<repo-name>)
+cd "${CODESPACE_VSCODE_FOLDER:-$(pwd)}"
 
 # Wait for Docker to be ready
 echo "⏳ Waiting for Docker to be ready..."

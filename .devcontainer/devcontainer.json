@@ -1,14 +1,9 @@
 {
   "name": "MCP PyCon Demo",
-  "dockerComposeFile": "../docker-compose.yml",
-  "service": "demo-client",
-  "workspaceFolder": "/workspace",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
 
   // Features to install in the Codespace
   "features": {
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.12"
-    },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {
       "version": "latest",
       "dockerDashComposeVersion": "v2"
@@ -25,10 +20,10 @@
 
   // Forward ports for all services
   "forwardPorts": [
-    8501,  // Streamlit Demo Client
-    8000,  // Task API
-    8001,  // MCP Server
-    4566   // LocalStack
+    8501,
+    8000,
+    8001,
+    4566
   ],
 
   // Port attributes
@@ -49,19 +44,6 @@
       "label": "LocalStack",
       "onAutoForward": "silent"
     }
-  },
-
-  // Environment variables
-  "containerEnv": {
-    "PYTHONUNBUFFERED": "1",
-    "AWS_REGION": "us-east-1",
-    "AWS_S3_BUCKET": "mcp-pycon-demo-bucket",
-    "AWS_ENDPOINT_URL": "http://localstack:4566",
-    "AWS_ACCESS_KEY_ID": "test",
-    "AWS_SECRET_ACCESS_KEY": "test",
-    "TASK_API_KEY": "demo-secret-key-change-in-production",
-    "TASK_API_URL": "http://task-api:8000",
-    "MCP_SERVER_URL": "http://mcp-server:8001"
   },
 
   // VS Code customizations
@@ -106,17 +88,6 @@
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "postStartCommand": "bash .devcontainer/post-start.sh",
 
-  // Run services in background
-  "runServices": ["localstack", "task-api", "mcp-server", "demo-client"],
-
-  // Mount workspace
-  "mounts": [
-    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
-  ],
-
   // Container user
-  "remoteUser": "root",
-
-  // Update remote user UID/GID to match local user
-  "updateRemoteUserUID": true
+  "remoteUser": "vscode"
 }

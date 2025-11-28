@@ -6,8 +6,8 @@ set -e
 
 echo "🚀 Running post-create setup..."
 
-# Navigate to workspace
-cd /workspace
+# Navigate to workspace (Codespaces default is /workspaces/<repo-name>)
+cd "${CODESPACE_VSCODE_FOLDER:-$(pwd)}"
 
 # Install uv if not already installed
 if ! command -v uv &> /dev/null; then
